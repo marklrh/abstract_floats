@@ -232,13 +232,17 @@ module TestArithmetic = struct
   let ppf f =
     Printf.printf "%.16e\n\n" f
 
-  let test op1 op2 a1 a2 =
+  let test op1 op2 a1 a2 mode =
     let srf = RandomAF.random_select in
     let a12 = op2 a1 a2 in
     assert(Header.check a12);
     for i = 0 to 1000 do
       let rf1, rf2 = srf a1, srf a2 in
       let rf12 = op1 rf1 rf2 in
+      print_endline mode;
+      ppa a1; ppa a2; ppa a12;
+      print_newline ();
+      ppf rf1; ppf rf2; ppf rf12;
       assert(is_included (inject_float rf12) a12)
     done
 
@@ -247,12 +251,10 @@ module TestArithmetic = struct
     let f = RandomAF.random_abstract_float in
     for i = 0 to 100 do
       let a1, a2 = f (), f () in
-      test ( +. ) add a1 a2;
-      test ( -. ) sub a1 a2;
-(*
-      test ( *. ) mult a1 a2;
-      test ( /. ) div a1 a2
-*)
+      test ( +. ) add a1 a2 "add";
+      test ( -. ) sub a1 a2 "sub";
+      test ( *. ) mult a1 a2 "mult";
+      test ( /. ) div a1 a2 "div"
     done;
     print_endline "Arithmetic: random tests successful"
 
