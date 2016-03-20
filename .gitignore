@@ -1,9 +1,10 @@
-a.out
+*.out
 
 *.annot
 *.cmo
 *.cma
 *.cmi
+*.cmp
 *.a
 *.o
 *.cmx
@@ -20,3 +21,5 @@ _build/
 # oasis generated files
 setup.data
 setup.log
+
+*.swp

@@ -59,7 +59,8 @@ module RandomAF = struct
     match Random.int 10 with
     | 0 -> min_float
     | 1 -> max_float
-    | _ -> Random.float 1_000_000.
+    | (_ as h) when h < 7 -> Random.float 1_000_000_000.
+    | _ -> Random.float (2e-308)
 
   let random_float () =
     match Random.int 7 with
