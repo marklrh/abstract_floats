@@ -46,7 +46,6 @@ type abstract_float = float array
   - nonzero means the normalish and infinite components, but usually not NaN
 *)
 
-
 let sign_bit = 0x8000_0000_0000_0000L
 
 let payload_mask = 0x800F_FFFF_FFFF_FFFFL
@@ -574,7 +573,7 @@ end = struct
     let finite_neg2_pos_zero_1 = has_finite2 land h1sr in
     let opposite_signs =
       finite_pos2_neg_zero_1 lor finite_pos1_neg_zero_2 lor
-	finite_neg1_pos_zero_2 lor finite_neg2_pos_zero_1
+      finite_neg1_pos_zero_2 lor finite_neg2_pos_zero_1
     in
     let neg_zero = opposite_signs land negative_zero in
 
@@ -589,9 +588,9 @@ end = struct
     let neg_nonzero_2_pos_inf_1 = has_nonzero2 land h1sr in
     let pos_nonzero_1_neg_inf_2 = (has_nonzero1 lsr 1) land h2 in
     let pos_nonzero_2_neg_inf_1 = (has_nonzero2 lsr 1) land h1 in
-    let neg_inf = 
+    let neg_inf =
       pos_nonzero_2_neg_inf_1 lor neg_nonzero_2_pos_inf_1 lor
-	pos_nonzero_1_neg_inf_2 lor neg_nonzero_1_pos_inf_2 
+      pos_nonzero_1_neg_inf_2 lor neg_nonzero_1_pos_inf_2
     in
     let neg_inf = neg_inf land negative_inf in
 

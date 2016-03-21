@@ -269,13 +269,15 @@ module TestArithmetic = struct
 
   let test_rand () =
     print_endline "Arithmetic: start random tests";
-    for i = 0 to 100 do
+    for i = 0 to 100000 do
       let a1, a2 = RandomAF.random_AF_pair () in
       test ( +. ) add a1 a2;
       test ( -. ) sub a1 a2;
+    done;
+    for i = 0 to 100 do
+      let a1, a2 = RandomAF.random_AF_pair () in
       test ( *. ) mult a1 a2;
       test ( /. ) div a1 a2
-
     done;
     print_endline "Arithmetic: random tests successful"
 
