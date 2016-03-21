@@ -552,6 +552,8 @@ end = struct
     stay lor new_infs lor new_zeroes
 
   let mult h1 h2 =
+    (* has_finite indicates the presente of finite negative values in
+       negative_zero, of finite positive values in positive_zero *)
     let has_finite1 = (h1 lsl 4) lor h1 in
     let has_finite2 = (h2 lsl 4) lor h2 in
     let same_signs12 = has_finite1 land h2 in
@@ -564,26 +566,34 @@ end = struct
     let pos_zero = pos_zero land positive_zero in
 
     (* Compute in negative_zero bit: *)
-    let opposite_signs12 = (has_finite2 lsr 1) land h1 in
-    let opposite_signs21 = (has_finite1 lsr 1) land h2 in
-    let opposite_signs = opposite_signs12 lor opposite_signs21 in
+    let finite_pos2_neg_zero_1 = (has_finite2 lsr 1) land h1 in
+    let finite_pos1_neg_zero_2 = (has_finite1 lsr 1) land h2 in
+    let h2sr = h2 lsr 1 in
+    let finite_neg1_pos_zero_2 = has_finite1 land h2sr in
+    let h1sr = h1 lsr 1 in
+    let finite_neg2_pos_zero_1 = has_finite2 land h1sr in
+    let opposite_signs =
+      finite_pos2_neg_zero_1 lor finite_pos1_neg_zero_2 lor
+	finite_neg1_pos_zero_2 lor finite_neg2_pos_zero_1
+    in
     let neg_zero = opposite_signs land negative_zero in
 
-    (* Compute in positive_zero and positive_inf bits: *)
-    let merge_posneg1 = (h1 lsl 1) lor h1 in
-    let merge_posneg2 = (h2 lsl 1) lor h2 in
-    let nan12 = (merge_posneg1 lsl 2) land h2 in
-    let nan21 = (merge_posneg2 lsl 2) land h1 in
-    let nan_zero_times_inf = (nan12 lor nan21) land positive_zero in
-    (* are there NaNs in operands? *)
-    let nan_as_op = (h1 lor h2) land at_least_one_NaN in
-    let nan = nan_zero_times_inf lor nan_as_op in
-    (* Map nonzero to 3 and 0 to 0: *)
-    let nan = (- nan) lsr (Sys.word_size - 1 - 2) in
+    let zeroes = pos_zero lor neg_zero in
 
     (* compute in the infinities bits: *)
     let has_nonzero1 = (h1 lsl 2) lor h1 in
     let has_nonzero2 = (h2 lsl 2) lor h2 in
+
+    (* compute in the negative_inf bit: *)
+    let neg_nonzero_1_pos_inf_2 = has_nonzero1 land h2sr in
+    let neg_nonzero_2_pos_inf_1 = has_nonzero2 land h1sr in
+    let pos_nonzero_1_neg_inf_2 = (has_nonzero1 lsr 1) land h2 in
+    let pos_nonzero_2_neg_inf_1 = (has_nonzero2 lsr 1) land h1 in
+    let neg_inf = 
+      pos_nonzero_2_neg_inf_1 lor neg_nonzero_2_pos_inf_1 lor
+	pos_nonzero_1_neg_inf_2 lor neg_nonzero_1_pos_inf_2 
+    in
+    let neg_inf = neg_inf land negative_inf in
 
     (* +inf is obtained by multiplying nonzero and inf of the same sign: *)
     let pos_inf12 = has_nonzero1 land h2 in
@@ -592,13 +602,21 @@ end = struct
     let pos_inf = pos_inf lor (pos_inf lsl 1) in
     let pos_inf = pos_inf land positive_inf in
 
-    (* compute in the negative_inf bit: *)
-    let neg_inf12 = (has_nonzero1 lsr 1) land h2 in
-    let neg_inf21 = (has_nonzero2 lsr 1) land h1 in
-    let neg_inf = neg_inf12 lor neg_inf21 in
-    let neg_inf = neg_inf land negative_inf in
+    let infinities = neg_inf lor pos_inf in
 
-    neg_inf lor pos_inf lor neg_zero lor pos_zero lor nan
+    (* Compute in negative_zero and negative_inf bits: *)
+    let merge_posneg1 = h1sr lor h1 in
+    let merge_posneg2 = h2sr lor h2 in
+    let nan12 = (merge_posneg1 lsl 2) land merge_posneg2 in
+    let nan21 = (merge_posneg2 lsl 2) land merge_posneg1 in
+    let nan_zero_times_inf = (nan12 lor nan21) land negative_zero in
+    (* are there NaNs in operands? *)
+    let nan_as_op = (h1 lor h2) land at_least_one_NaN in
+    let nan = nan_zero_times_inf lor nan_as_op in
+    (* Map nonzero to 3 and 0 to 0: *)
+    let nan = (- nan) lsr (Sys.word_size - 1 - 2) in
+
+    infinities lor zeroes lor nan
 
   let div h1 h2 = mult h1 (inv h2)
 end
@@ -762,26 +780,6 @@ let insert_all_bounds a1 a2 : unit =
   for i = 1 to (Array.length a1 - 1) do
     insert_float_in_bounds a2 (if i mod 2 = 1 then (-.a1.(i)) else a1.(i))
   done
-
-(*
-  Examples for testing: [1.0 … 2.0], [-10.0 … -9.0]
-*)
-
-let onetwo =
-  let header = Header.(of_flag positive_normalish) in
-  let r = Header.(allocate_abstract_float header) in
-  set_pos_lower r 1.0;
-  set_pos_upper r 2.0;
-  assert (Header.check r);
-  r
-
-let minus_nineten =
-  let header = Header.(of_flag negative_normalish) in
-  let r = Header.(allocate_abstract_float header) in
-  set_neg_lower r (-10.0);
-  set_neg_upper r (-9.0);
-  assert (Header.check r);
-  r
 
 let inject_float f = Array.make 1 f
 
@@ -1107,7 +1105,7 @@ let join (a1:abstract_float) (a2: abstract_float) : abstract_float =
       | (FP_zero, FP_zero, _, _ | FP_infinite, FP_infinite, _, _)
         when (is_pos f1 && is_pos f2) ||
              (is_neg f1 && is_neg f2) -> [|f1|]
-      | (FP_normal, FP_normal, _, _ | FP_subnormal, FP_subnormal, _, _)
+      | (FP_normal, FP_normal, _, _) | (FP_subnormal, FP_subnormal, _, _)
         when f1 = f2 -> [|f1|]
       | _, _, _, _ -> begin
         let h = set_header_from_float f1 Header.bottom in
@@ -1171,7 +1169,6 @@ let join (a1:abstract_float) (a2: abstract_float) : abstract_float =
       | _, _, _, _, _ -> assert false
       end;
       an
-
 
 let meet a1 a2 = assert false
 
@@ -1242,12 +1239,7 @@ let abstract_sqrt a =
     let new_h = Header.sqrt h in
     if Header.(test h positive_normalish)
     then
-      let na =
-        if Header.exactly_one_NaN new_h then
-          Header.(allocate_abstract_float_with_NaN new_h
-            (reconstruct_NaN a))
-        else
-          Header.allocate_abstract_float new_h in
+      let na = Header.allocate_abstract_float new_h in
       let l, u = (-. (get_opp_pos_lower a)), (get_pos_upper a) in
       set_pos na (sqrt l) (sqrt u);
       na
@@ -1429,24 +1421,6 @@ let add_expanded a1 a2 =
    from [a1] to a value from [a2]. *)
 let add = binop (fun r a1 a2 -> r.(0) <- a1.(0) +. a2.(0)) add_expanded
 
-let sub_expanded a1 a2 =
-  let header1 = Header.of_abstract_float a1 in
-  let header2 = Header.of_abstract_float a2 in
-  let header = Header.sub header1 header2 in
-
-  let opp_neg_l = assert false in
-  let neg_u = assert false in
-  let opp_pos_l = assert false in
-  let pos_u = assert false in
-
-  (* First, normalize. What may not look like a singleton before normalization
-     may turn out to be one afterwards: *)
-  let header, neg_l, neg_u, pos_l, pos_u =
-    normalize_for_add header (-. opp_neg_l) neg_u (-. opp_pos_l) pos_u
-  in
-  inject header neg_l neg_u pos_l pos_u
-
-let sub = binop (fun r a1 a2 -> r.(0) <- a1.(0) -. a2.(0)) sub_expanded
 
 let sub a1 a2 = add a1 (neg a2)
 
