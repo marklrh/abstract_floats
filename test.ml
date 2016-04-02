@@ -198,12 +198,22 @@ module RandomAF = struct
     (-. get_opp_pos_lower a), get_pos_upper a
 
   let neg_range a =
-    (-. get_opp_neg_lower a), get_pos_upper a
+    (-. get_opp_neg_lower a), get_neg_upper a
 
   (* for pos *)
   let random_float l u =
+    if l = smallest_neg && u = largest_neg
+      then l +. (Random.float (largest_neg -. l)) else
+    if l = smallest_pos && u = largest_pos
+      then l +. (Random.float (largest_pos -. l)) else
+    try (
     Int64.(float_of_bits (add (bits_of_float l)
-      (Random.int64 (succ (sub (bits_of_float u) (bits_of_float l))))))
+          (Random.int64 (succ (sub (bits_of_float u) (bits_of_float l)))))))
+    with _ -> Format.printf "%a %a\n" ppf l ppf u; assert false
+
+  let random_float l u =
+    if u < 0. then -.(random_float (-.u) (-.l)) else
+      random_float l u
 
   let fsucc_ f = Int64.(float_of_bits @@ succ @@ bits_of_float f)
   let fpred_ f = Int64.(float_of_bits @@ pred @@ bits_of_float f)
@@ -398,7 +408,7 @@ module TestMeet = struct
 
   let test_rand () =
     print_endline "Meet: start random tests";
-    for i = 0 to 1_000_0000 do
+    for i = 0 to 1_000_00 do
       test ()
     done;
     print_endline "Meet: random tests successful"
@@ -452,7 +462,6 @@ module TestArithmetic = struct
 
 end
 
-
 module TestPretty = struct
 
   let test_rand () =
@@ -486,7 +495,7 @@ module TestReverseAdd = struct
         for i = 0 to 100 do
           let fa, fb = RandomAF.(select a, select b) in
           let nxf = f () in
-          if nxf +. fa = fb && fb <> infinity then begin
+          if nxf +. fa = fb then begin
           Format.printf "%s\n" (String.make 10 '~');
           Format.printf "x : %a\nx': %a\na : %a\nb : %a\n\n"
             pretty x pretty nx pretty a pretty b;
@@ -556,21 +565,32 @@ module TestReverseAdd = struct
     let a = inject_float 1.0 in
     let b = inject_float 11.0 in
     test x a b
-
+  
+  let test_norm_all () =
+    test_bug1 ();
+    test_bug2 ();
+    ntest1 ();
+    ntest2 ()
 end
 
-let test_neg = false
-let test_join = false
-let test_meet = false
-let test_sqrt = false
-let test_arith = false
-let test_pretty = false
+(*
+let test_neg = true
+let test_join = true
+let test_meet = true
+let test_sqrt = true
+let test_arith = true
+let test_pretty = true
+*)
 let test_reverse = true
 
+(*
 let () = if test_join then
   (TestJoins.test_others (); TestJoins.test_rand ())
 let () = if test_meet then TestMeet.test_rand ()
 let () = if test_sqrt then TestSqrt.test_rand ()
 let () = if test_arith then TestArithmetic.test_rand ()
 let () = if test_pretty then TestPretty.test_rand ()
-let () = if test_reverse then TestReverseAdd.test_rand ()
+*)
+let () = if test_reverse then begin
+    TestReverseAdd.test_rand ()
+  end

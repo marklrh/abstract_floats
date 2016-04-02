@@ -69,6 +69,11 @@ let is_pos_zero f = Int64.bits_of_float f = 0L
 
 let is_neg_zero f = Int64.bits_of_float f = sign_bit
 
+let largest_neg = -4.94e-324
+let smallest_pos = +4.94e-324
+let smallest_neg = -.max_float
+let largest_pos = max_float
+
 let dump_internal a =
   let l = Array.length a in
   Format.printf "[|";
@@ -889,6 +894,7 @@ let merge_float a f =
   assert (Header.check a);
   assert (Array.length a >= 2);
   let h = Header.of_abstract_float a in
+  if Header.is_bottom h then inject_float f else
   match classify_float f with
   | (FP_zero | FP_infinite) ->
     let h_new = Header.(set_flag h (flag_of_float f)) in
@@ -949,25 +955,25 @@ let merge_float a f =
 let normalize_zero_and_inf zero_for_negative header neg_l neg_u pos_l pos_u =
   let neg_u, header =
     if neg_u = 0.0
-    then -4.94e-324,  (* smallest magnitude subnormal *)
+    then largest_neg,  (* smallest magnitude subnormal *)
       Header.set_flag header zero_for_negative
     else neg_u, header
   in
   let pos_l, header =
     if pos_l = 0.0
-    then +4.94e-324,  (* smallest magnitude subnormal *)
+    then smallest_pos,  (* smallest magnitude subnormal *)
       Header.(set_flag header positive_zero)
     else pos_l, header
   in
   let neg_l, header =
     if neg_l = neg_infinity
-    then -1.79769313486231571e+308, (* -. max_float *)
+    then smallest_neg, (* -. max_float *)
       Header.(set_flag header negative_inf)
     else neg_l, header
   in
   let pos_u, header =
     if pos_u = infinity
-    then +1.79769313486231571e+308, (* max_float *)
+    then largest_pos, (* max_float *)
       Header.(set_flag header positive_inf)
     else pos_u, header
   in
@@ -1805,8 +1811,8 @@ end
 
 let top () =
   let a = Header.(allocate_abstract_float top) in
-  set_pos a 4.94e-324 1.79769313486231571e+308;
-  set_neg a (-1.79769313486231571e+308) (-4.94e-324);
+  set_pos a smallest_pos largest_pos;
+  set_neg a smallest_neg largest_neg;
   a
 
 let narrow_pos_range a pl pu =
@@ -1857,7 +1863,8 @@ let reverse_add x a b =
     dump_internal (Header.allocate_abstract_float h);
     Format.printf "-------------\n" end;
   if Header.is_top h then x else begin
-    (* D3, bugged *)
+    (* D3, bugged, lazily
+       *)
     let pos_overflow =
       if Header.(test h1 positive_normalish &&
                  test h2 positive_inf) then
@@ -1882,7 +1889,7 @@ let reverse_add x a b =
           | Dichotomy.Empty -> None
       else None in
     (* D5, E6 *)
-    let both_inf =
+    let both_inf = (* narrow can never happen. redundant! *)
       if Header.((test h1 positive_inf && test h2 positive_inf) ||
                  (test h1 negative_inf && test h2 negative_inf)) then
         Some ((-. max_float), max_float) else None in
@@ -1932,6 +1939,7 @@ let reverse_add x a b =
         | Empty, _ -> None
       end
       else None in
+    let x = Array.copy x in
     let i = ref 0 in
     let narrow x (l, u) =
       let nx = narrow_range x l u in
@@ -1946,7 +1954,7 @@ let reverse_add x a b =
     let rec reduced acc = function
       | [] -> acc
       | Some r :: tl -> reduced ((narrow x r) :: acc) tl
-      | None :: tl -> reduced acc tl in
+      | None :: tl -> reduced (Header.(allocate_abstract_float bottom) :: acc) tl in
     let xs = reduced []
       [pos_overflow; neg_overflow; both_inf; zero_pos; zero_neg;
        papb; nanb; panb; napb] in
