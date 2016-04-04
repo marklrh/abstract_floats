@@ -3,6 +3,11 @@
 
 let ppf f = Printf.printf "%.16e\n" f
 
+let largest_neg = -4.94e-324
+let smallest_pos = +4.94e-324
+let smallest_neg = -.max_float
+let largest_pos = max_float
+
 type t =
   | Range of float * float
   | Single of float
@@ -46,18 +51,16 @@ let upper_pos = dichotomy (fun f a b -> f +. a > b) pos_zero
 
 let lower_pos = dichotomy (fun f a b -> f +. a >= b) pos_zero
 
-let dump a b =
-  let un = upper_neg a b in
-  let ln = lower_neg a b in
-  let up = upper_pos a b in
-  let lp = lower_pos a b in
-  Printf.printf "upper_neg : %.16e\n" un;
-  Printf.printf "lower_neg : %.16e\n" ln;
-  Printf.printf "upper_pos : %.16e\n" up;
-  Printf.printf "lower_pos : %.16e\n" lp;
-  un, ln, up, lp
+(* smallest pos normalish such that there exists a number x such that
+ [pos_cp +. x = infinity] *)
+let pos_cp = 9.9792015476736e+291
+let neg_cp = -9.9792015476736e+291
 
-exception E of float * float
+let dump a b =
+  Printf.printf "upper_neg : %.16e\n" (upper_neg a b);
+  Printf.printf "lower_neg : %.16e\n" (lower_neg a b);
+  Printf.printf "upper_pos : %.16e\n" (upper_pos a b);
+  Printf.printf "lower_pos : %.16e\n" (lower_pos a b)
 
 let range a b =
   try begin
@@ -87,8 +90,32 @@ let range a b =
   end else
     Range (l, u)
   end
-  with _ -> begin
-    Empty
-  end
+  with _ -> Empty
 
-let r a b = range a b |> to_string
+let normalize = function
+  | Range (l, u) ->
+    if l = 0.0 then
+      if u = 0.0 then Some (l, u), None, None else
+      if u > 0.0 then Some (l, l), None, Some (smallest_pos, u) else
+      assert false else
+    if l > 0.0 then None, None, Some (l, u) else
+    if u = 0.0 then Some (u, u), Some (l, largest_neg), None else
+    if u < 0.0 then None, Some (l, u), None else
+      Some (-0.0, 0.0), Some (l, largest_neg), Some (smallest_pos, u)
+  | Single n ->
+    if n = 0.0 then Some (n, n), None, None else
+    if n > 0.0 then None, None, Some (n, n)
+    else None, Some (n, n), None
+  | Empty -> None, None, None
+
+let combine t1 t2 =
+  match t1, t2 with
+  | Empty, r | r, Empty -> r
+  | Range (l1, u1), Range (l2, u2) ->
+    Range (min l1 l2, max u1 u2)
+  | Range (l, u) as r, Single n | Single n, (Range (l, u) as r) ->
+    if n < l then Range (n, u) else
+    if n > u then Range (l, n) else r
+  | Single n1, Single n2 ->
+    if n1 = n2 then t1 else
+    if n1 > n2 then Range (n2, n1) else Range (n1, n2)
