@@ -86,7 +86,6 @@ let dump_internal a =
   done;
   Format.printf "|]@\n";
 
-
 (*
              ***** UNITY OF REPRESENTATION *****
 
@@ -1469,9 +1468,8 @@ let normalize a =
     if Header.(is_exactly h positive_inf) then abstract_infinity else
     if Header.(is_exactly h negative_inf) then abstract_neg_infinity else
     if Header.(is_exactly h positive_normalish) then
-      (print_endline "weeeeeeeeeeeee";
       let l, u = (-. get_opp_pos_lower a), get_pos_upper a in
-      if l = u then inject_float u else a) else
+      if l = u then inject_float u else a else
     if Header.(is_exactly h negative_normalish) then
       let l, u = (-. get_opp_neg_lower a), get_neg_upper a in
       if l = u then inject_float u else a else
@@ -1480,7 +1478,6 @@ let normalize a =
       | Header.One_NaN n -> inject_float (Int64.float_of_bits n)
       | _ -> a
     else a
-
 
 (* Generic second-order function that handles the singleton case
    and applies the provided algorithm to the expanded arguments
@@ -1725,40 +1722,7 @@ let div_expanded a1 a2 =
     a value from [a1] by a value from [a2]. *)
 let div = binop (fun r a1 a2 -> r.(0) <- a1.(0) /. a2.(0)) div_expanded
 
-module Dichotomy : sig
-
-  type t =
-    | Range of float * float
-    | Single of float
-    | Empty
-
-  val range : float -> float -> t
-
-  val normalize : t -> (float * float) option *
-                       (float * float) option *
-                       (float * float) option
-
-  val combine : t -> t -> t
-
-  val to_string : t -> string
-
-  (* first pos value such that there exists a normalish number [x]
-     such that adding [x] makes result overflow to infinity *)
-  val pos_cp : float
-
-  val neg_cp : float
-
-end = struct
-
-  type t =
-    | Range of float * float
-    | Single of float
-    | Empty
-
-  let to_string = function
-    | Range (l, u) -> Printf.sprintf "{%.16e ... %.16e}" l u
-    | Single f -> Printf.sprintf "{%.16e}" f
-    | Empty -> "empty range"
+module Dichotomy = struct
 
   let neg_zero = Int64.float_of_bits 0x8000_0000_0000_0000L
   let pos_zero = Int64.float_of_bits 0x0000_0000_0000_0000L
@@ -1784,7 +1748,6 @@ end = struct
         if restore tf a b then approach f (i + 1) else approach tf (i + 1)
     in approach init 0
 
-  (* not really inlined *)
   let upper_neg = dichotomy (fun f a b -> f +. a <= b) neg_zero
 
   let lower_neg = dichotomy (fun f a b -> f +. a < b) neg_zero
@@ -1793,7 +1756,7 @@ end = struct
 
   let lower_pos = dichotomy (fun f a b -> f +. a >= b) pos_zero
 
-(* smallest pos normalish such that there exists a number x such that
+  (* smallest pos normalish such that there exists a number x such that
    [pos_cp +. x = infinity] *)
   let pos_cp = 9.9792015476736e+291
   let neg_cp = -9.9792015476736e+291
@@ -1804,63 +1767,114 @@ end = struct
     Printf.printf "upper_pos : %.16e\n" (upper_pos a b);
     Printf.printf "lower_pos : %.16e\n" (lower_pos a b)
 
-  let range a b =
-    try begin
-    let l, u =
-      if a = b then
-        lower_neg a b, upper_pos a b else
-      if a < b then begin
-        if a +. max_float < b then raise Not_found else
-        if b = infinity then
-          fsucc (lower_pos a infinity), max_float
-        else
-          fsucc (lower_pos a b), upper_pos a b
-      end
-      else begin
-        if a -. max_float > b then raise Not_found else
-        if b = neg_infinity then
-          (-.max_float), fsucc (upper_neg a neg_infinity)
-        else
-          lower_neg a b, fsucc (upper_neg a b)
-      end in
-    if l = u && l <> 0. then Single l else
-    if l = u then Range (l, u) else
-    if l > u then begin
-      if l +. a = b then Single l else
-      if u +. a = b then Single u else
-        Empty
-    end else
-      Range (l, u)
-    end
-    with _ -> Empty
+  (*
+    solve x + au >= bl      --------- xl
+    solve x + al <= bu      --------- xu
+
+
+      a = 1.0
+      b = 1.1000000000000001e+00
+
+      xu = 1.0000000000000020e-01 (lower_pos is 9.9999999999999964e-02
+                                   upper_pos is 1.0000000000000020e-01)
+
+      xl = fsucc @@ 9.9999999999999964e-02
+
+      a = 1.0
+      b = 1.4
+      
+      xu = 4.0000000000000002e-01 (lower_pos is 3.9999999999999974e-01
+                                   upper_pos is 4.0000000000000002e-01)
+
+      xl = fsucc 3.9999999999999974e-01 (lower_pos)
+
+      a = 1.4
+      b = 1.8
+      
+      xu = 4.0000000000000019e-01 (lower_pos is 4.0000000000000002e-01
+                                   upper_pos is 4.0000000000000019e-01)
+
+
+      a = 0.4
+      b = 1.8
+
+      xu = 1.3999999999999999e+00 (lower_pos is 1.3999999999999999e+00
+                                   upper_pos is 1.3999999999999999e+00)
+
+      xl = fsucc @@ 1.3999999999999999e+00
+
+     ------------------
+
+      a = 1.4
+      b = 1.0
+      
+      xu = fsucc @@ -3.9999999999999974e-01
+                                  (lower_neg is -3.9999999999999997e-01
+                                   upper_neg is -3.9999999999999974e-01)
+      xl = -3.9999999999999997e (lower_neg)
+
+      a = 1.8
+      b = 1.4
+
+      xu = fsucc @@ 3.9999999999999997e-01
+                                  (lower_neg is -4.0000000000000024e-01
+                                   upper_neg is -3.9999999999999997e-01)
+      xl = -4.0000000000000024e-01 (lower_neg)
+
+
+      ----------------
+      
+      a = 1.4
+      b = 1.4
+
+      xl is lower_neg
+      xu is upper_pos
+
+
+  *)
+
+  let pos_cp = 9.9792015476736e+291
+  let neg_cp = -9.9792015476736e+291
+
+  let lower_bound a b =
+    if a < b then fsucc @@ lower_pos a b else lower_neg a b
+
+  let upper_bound a b =
+    if a > b then fsucc @@ upper_neg a b else upper_pos a b
+
+  let range_add al au bl bu =
+    assert(al <> infinity && al <> neg_infinity);
+    assert(au <> infinity && au <> neg_infinity);
+    if bl = infinity || bu = infinity ||
+       bl = neg_infinity || bu = neg_infinity then assert(bl = bu);
+    if 0. < au && au <= max_float then assert(0. < al && al <= au);
+    if 0. < bu && bu <= max_float then assert(0. < bl && bl <= bu);
+    if (-.max_float) <= al && al < 0. then assert(al <= au && au < 0.);
+    if (-.max_float) <= bl && bl < 0. then assert(bl <= bu && bu < 0.);
+    if bl = infinity then
+      if au < pos_cp then None else
+        let l = lower_pos au infinity in
+        let l = if l +. au < infinity then fsucc l else l in
+        Some (l, max_float) else
+    if bl = neg_infinity then
+      if al > neg_cp then None else
+        let u = upper_neg al neg_infinity in
+        let u = if u +. al > neg_infinity then fsucc u else u in
+        Some (-.max_float, u)
+    else
+      let l = lower_bound au bl
+      and u = upper_bound al bu in
+      if l > u then None else Some (l, u)
 
   let normalize = function
-    | Range (l, u) ->
-      if l = 0.0 then
-        if u = 0.0 then Some (l, u), None, None else
-        if u > 0.0 then Some (l, l), None, Some (smallest_pos, u) else
-        assert false else
-      if l > 0.0 then None, None, Some (l, u) else
-      if u = 0.0 then Some (u, u), Some (l, largest_neg), None else
+    | None -> None, None, None
+    | Some (l, u) ->
+      assert(l <= u);
+      if l = 0.0 && u = 0.0 then Some (-0.0, 0.0), None, None else
+      if l = 0.0 then Some (-0.0, 0.0), None, Some (smallest_pos, u) else
+      if u = 0.0 then Some (-0.0, 0.0), Some (l, largest_neg), None else
       if u < 0.0 then None, Some (l, u), None else
         Some (-0.0, 0.0), Some (l, largest_neg), Some (smallest_pos, u)
-    | Single n ->
-      if n = 0.0 then Some (n, n), None, None else
-      if n > 0.0 then None, None, Some (n, n)
-      else None, Some (n, n), None
-    | Empty -> None, None, None
-
-  let combine t1 t2 =
-    match t1, t2 with
-    | Empty, r | r, Empty -> r
-    | Range (l1, u1), Range (l2, u2) ->
-      Range (min l1 l2, max u1 u2)
-    | Range (l, u) as r, Single n | Single n, (Range (l, u) as r) ->
-      if n < l then Range (n, u) else
-      if n > u then Range (l, n) else r
-    | Single n1, Single n2 ->
-      if n1 = n2 then t1 else
-      if n1 > n2 then Range (n2, n1) else Range (n1, n2)
 
 end
 
@@ -1975,34 +1989,33 @@ let reduce_neg_norm nl nu lx ux =
   if ux < nl || lx > nu then None else
     Some (max nl lx, min nu ux)
 
-let reduce_pos_norm_if_pos pl pu hx x =
-  if Header.(test hx positive_normalish) then
-    let lx, ux = (-. get_opp_pos_lower x), get_pos_upper x in
-    reduce_pos_norm pl pu lx ux
-  else None
+let reduce_pos_norm_if_pos r hx x =
+  match r with
+  | None -> None
+  | Some (pl, pu) ->
+    if Header.(test hx positive_normalish) then
+      let lx, ux = (-. get_opp_pos_lower x), get_pos_upper x in
+      reduce_pos_norm pl pu lx ux
+    else None
 
-let reduce_neg_norm_if_neg nl nu hx x =
-  if Header.(test hx negative_normalish) then
-    let lx, ux = (-. get_opp_neg_lower x), get_neg_upper x in
-    reduce_neg_norm nl nu lx ux
-  else None
+let reduce_neg_norm_if_neg r hx x =
+  match r with
+  | None -> None
+  | Some (nl, nu) ->
+    if Header.(test hx negative_normalish) then
+      let lx, ux = (-. get_opp_neg_lower x), get_neg_upper x in
+      reduce_neg_norm nl nu lx ux
+    else None
 
 let fold_range init l =
   let foldf acc cur =
-(*
-    begin
-      Printf.printf "~~~\n";
-      match cur with
-      | None -> Printf.printf "None\n"
-      | Some (l, u) -> Printf.printf "%.16e - %.16e\n" l u
-    end;
-*)
     match acc, cur with
     | None, r | r, None -> r
     | Some (l1, u1), Some (l2, u2) -> Some (min l1 l2, max u1 u2) in
   List.fold_left foldf init l
 
 let check_range ?msg (r1, r2) =
+  if not debug then () else begin
   (match msg with
   | None -> ()
   | Some s -> Printf.printf "%s : " s);
@@ -2021,6 +2034,7 @@ let check_range ?msg (r1, r2) =
       (Printf.printf "{%.16e ... %.16e\n}" l u);
       if not (l > 0. && l <= u) then assert false else ()
   end
+  end
 
 let reverse_add x a b =
   let a = if is_singleton a then expand a else a in
@@ -2034,17 +2048,10 @@ let reverse_add x a b =
                test ha positive_normalish &&
                test hb positive_inf) then
       let pl, pu = (-. get_opp_pos_lower a), get_pos_upper a in
-      if pu < Dichotomy.pos_cp then None, None else
-        let cpl = max pl Dichotomy.pos_cp in
-        let infl, infu =
-          let open Dichotomy in
-          match range pu infinity, range cpl infinity with
-          | (Single l | Range (l, _)), (Range (_, u) | Single u) ->
-            (assert(u = max_float); l, u)
-          | _, _ -> assert false in
-        let lx, ux = (-. get_opp_pos_lower x), get_pos_upper x in
-        if ux < infl then None, None else
-          None, Some (max infl lx, min infu ux)
+      let zr, nr, pr =
+        Dichotomy.(normalize @@ range_add pl pu infinity infinity) in
+      set_zeros nhx zr;
+      reduce_neg_norm_if_neg nr hx x, reduce_pos_norm_if_pos pr hx x
     else
       None, None in
   check_range ~msg:"pos_overflow" pos_overflow;
@@ -2053,21 +2060,10 @@ let reverse_add x a b =
                test ha negative_normalish &&
                test hb negative_inf) then
       let nl, nu = (-. get_opp_neg_lower a), get_neg_upper a in
-      if nl > Dichotomy.neg_cp then None, None else
-        let cnu = min nu Dichotomy.neg_cp in
-        let infl, infu =
-          let open Dichotomy in
-          match range cnu neg_infinity, range nl neg_infinity with
-          | (Single l | Range (l, _)), (Range (_, u) | Single u) ->
-            (assert(l = (-.max_float)); l, u)
-          | r1, r2 -> begin
-              print_endline (Dichotomy.to_string r1);
-              print_endline (Dichotomy.to_string r2);
-              assert false
-            end in
-        let lx, ux = (-. get_opp_neg_lower x), get_neg_upper x in
-        if lx > infu then None, None else
-          Some (max infl lx, min infu ux), None
+      let zr, nr, pr =
+        Dichotomy.(normalize @@ range_add nl nu neg_infinity neg_infinity) in
+      set_zeros nhx zr;
+      reduce_neg_norm_if_neg nr hx x, reduce_pos_norm_if_pos pr hx x
     else
       None, None in
   check_range ~msg:"neg_overflow" neg_overflow;
@@ -2079,11 +2075,9 @@ let reverse_add x a b =
       None, None in
   check_range ~msg:"both_inf" both_inf;
   let azbp =
-    if Header.(test hb positive_normalish &&
-               test hx positive_normalish && has_zeros ha) then
+    if Header.(test hb positive_normalish && has_zeros ha) then
       let pl, pu = (-. get_opp_pos_lower b), get_pos_upper b in
-      let lx, ux = (-. get_opp_pos_lower x), get_pos_upper x in
-      None, reduce_pos_norm pl pu lx ux
+      None, reduce_pos_norm_if_pos (Some (pl, pu)) hx x
     else
       None, None in
   check_range ~msg:"azbp" azbp;
@@ -2091,8 +2085,7 @@ let reverse_add x a b =
     if Header.(test hb negative_normalish &&
                test hx negative_normalish && has_zeros ha) then
       let nl, nu = (-. get_opp_neg_lower b), get_neg_upper b in
-      let lx, ux = (-. get_opp_neg_lower x), get_neg_upper x in
-      reduce_neg_norm nl nu lx ux, None
+      reduce_neg_norm_if_neg (Some (nl, nu)) hx x, None
     else
       None, None in
   check_range ~msg:"azbn" azbn;
@@ -2117,14 +2110,9 @@ let reverse_add x a b =
       let al, au = (-. get_opp_pos_lower a), get_pos_upper a in
       let bl, bu = (-. get_opp_pos_lower b), get_pos_upper b in
       let zr, nr, pr =
-        Dichotomy.(normalize (combine (range au bl) (range al bu))) in
+        Dichotomy.(normalize (range_add al au bl bu)) in
       set_zeros nhx zr;
-      (match nr with
-       | None -> None
-       | Some (nl, nu) -> reduce_neg_norm_if_neg nl nu hx x),
-      (match pr with
-       | None -> None
-       | Some (pl, pu) -> reduce_pos_norm_if_pos pl pu hx x)
+      reduce_neg_norm_if_neg nr hx x, reduce_pos_norm_if_pos pr hx x
      else
       None, None in
   check_range ~msg:"papb" papb;
@@ -2134,14 +2122,9 @@ let reverse_add x a b =
       let al, au = (-. get_opp_neg_lower a), get_neg_upper a in
       let bl, bu = (-. get_opp_neg_lower b), get_neg_upper b in
       let zr, nr, pr =
-        Dichotomy.(normalize (combine (range au bl) (range al bu))) in
+        Dichotomy.(normalize (range_add al au bl bu)) in
       set_zeros nhx zr;
-      (match nr with
-       | None -> None
-       | Some (nl, nu) -> reduce_neg_norm_if_neg nl nu hx x),
-      (match pr with
-       | None -> None
-       | Some (pl, pu) -> reduce_pos_norm_if_pos pl pu hx x)
+      reduce_neg_norm_if_neg nr hx x, reduce_pos_norm_if_pos pr hx x
     else
       None, None in
   check_range ~msg:"nanb" nanb;
@@ -2150,17 +2133,10 @@ let reverse_add x a b =
     then begin
       let al, au = (-. get_opp_pos_lower a), get_pos_upper a in
       let bl, bu = (-. get_opp_neg_lower b), get_neg_upper b in
-      let nr =
-        let open Dichotomy in
-        match range al bu, range au bl with
-        | (Single l | Range (l, _)), (Range (_, u) | Single u) -> Some (u, l)
-        | (Single l | Range (l, _)), Empty -> Some (-.max_float, l) (* not sure *)
-        | Empty, _ -> None in
-      let n =
-        match nr with
-        | Some (nl, nu) -> reduce_neg_norm_if_neg nl nu hx x
-        | None -> None in
-      n, None
+      let zr, nr, pr =
+        Dichotomy.(normalize (range_add al au bl bu)) in
+      set_zeros nhx zr;
+      reduce_neg_norm_if_neg nr hx x, reduce_pos_norm_if_pos pr hx x
     end
     else None, None in
   check_range ~msg:"panb" panb;
@@ -2169,17 +2145,10 @@ let reverse_add x a b =
     then begin
       let al, au = (-. get_opp_neg_lower a), get_neg_upper a in
       let bl, bu = (-. get_opp_pos_lower b), get_pos_upper b in
-      let pr =
-        let open Dichotomy in
-        match range au bl, range al bu with
-        | (Single l | Range (l, _)), (Range (_, u) | Single u) -> Some (l, u)
-        | (Single l | Range (l, _)), Empty -> Some (l, max_float) (* not sure *)
-        | Empty, _ -> None in
-      let p =
-        match pr with
-        | Some (pl, pu) -> reduce_pos_norm_if_pos pl pu hx x
-        | None -> None in
-      None, p
+      let zr, nr, pr =
+        Dichotomy.(normalize (range_add al au bl bu)) in
+      set_zeros nhx zr;
+      reduce_neg_norm_if_neg nr hx x, reduce_pos_norm_if_pos pr hx x
     end
     else None, None in
   check_range ~msg:"napb" napb;
@@ -2187,9 +2156,9 @@ let reverse_add x a b =
   let l = [neg_overflow; both_inf; azbp; azbn; bz; papb; nanb; panb; napb] in
   let restn, restp = List.map fst l, List.map snd l in
   let nr, pr = fold_range initn restn, fold_range initp restp in
-  dump_internal (Header.allocate_abstract_float !nhx);
+  if debug then dump_internal (Header.allocate_abstract_float !nhx);
   nhx := Header.(narrow hx !nhx);
-  dump_internal (Header.allocate_abstract_float !nhx);
+  if debug then dump_internal (Header.allocate_abstract_float !nhx);
   if nr <> None then nhx := Header.(set_flag !nhx negative_normalish);
   if pr <> None then nhx := Header.(set_flag !nhx positive_normalish);
   let a =

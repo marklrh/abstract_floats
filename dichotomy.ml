@@ -8,16 +8,6 @@ let smallest_pos = +4.94e-324
 let smallest_neg = -.max_float
 let largest_pos = max_float
 
-type t =
-  | Range of float * float
-  | Single of float
-  | Empty
-
-let to_string = function
-  | Range (l, u) -> Printf.sprintf "{%.16e ... %.16e}" l u
-  | Single f -> Printf.sprintf "{%.16e}" f
-  | Empty -> "empty range"
-
 let neg_zero = Int64.float_of_bits 0x8000_0000_0000_0000L
 let pos_zero = Int64.float_of_bits 0x0000_0000_0000_0000L
 
@@ -42,7 +32,6 @@ let dichotomy restore init a b =
       if restore tf a b then approach f (i + 1) else approach tf (i + 1)
   in approach init 0
 
-(* not really inlined *)
 let upper_neg = dichotomy (fun f a b -> f +. a <= b) neg_zero
 
 let lower_neg = dichotomy (fun f a b -> f +. a < b) neg_zero
@@ -62,60 +51,133 @@ let dump a b =
   Printf.printf "upper_pos : %.16e\n" (upper_pos a b);
   Printf.printf "lower_pos : %.16e\n" (lower_pos a b)
 
-let range a b =
-  try begin
-  let l, u =
-    if a = b then
-      lower_neg a b, upper_pos a b else
-    if a < b then begin
-      if a +. max_float < b then raise Not_found else
-      if b = infinity then
-        fsucc (lower_pos a infinity), max_float
-      else
-        fsucc (lower_pos a b), upper_pos a b
-    end
-    else begin
-      if a -. max_float > b then raise Not_found else
-      if b = neg_infinity then
-        (-.max_float), fsucc (upper_neg a neg_infinity)
-      else
-        lower_neg a b, fsucc (upper_neg a b)
-    end in
-  if l = u && l <> 0. then Single l else
-  if l = u then Range (l, u) else
-  if l > u then begin
-    if l +. a = b then Single l else
-    if u +. a = b then Single u else
-      Empty
-  end else
-    Range (l, u)
-  end
-  with _ -> Empty
+(*
+  solve x + au >= bl      --------- xl
+  solve x + al <= bu      --------- xu
+
+
+    a = 1.0
+    b = 1.1000000000000001e+00
+
+    xu = 1.0000000000000020e-01 (lower_pos is 9.9999999999999964e-02
+                                 upper_pos is 1.0000000000000020e-01)
+
+    xl = fsucc @@ 9.9999999999999964e-02
+
+    a = 1.0
+    b = 1.4
+    
+    xu = 4.0000000000000002e-01 (lower_pos is 3.9999999999999974e-01
+                                 upper_pos is 4.0000000000000002e-01)
+
+    xl = fsucc 3.9999999999999974e-01 (lower_pos)
+
+    a = 1.4
+    b = 1.8
+    
+    xu = 4.0000000000000019e-01 (lower_pos is 4.0000000000000002e-01
+                                 upper_pos is 4.0000000000000019e-01)
+
+
+    a = 0.4
+    b = 1.8
+
+    xu = 1.3999999999999999e+00 (lower_pos is 1.3999999999999999e+00
+                                 upper_pos is 1.3999999999999999e+00)
+
+    xl = fsucc @@ 1.3999999999999999e+00
+
+   ------------------
+
+    a = 1.4
+    b = 1.0
+    
+    xu = fsucc @@ -3.9999999999999974e-01
+                                (lower_neg is -3.9999999999999997e-01
+                                 upper_neg is -3.9999999999999974e-01)
+    xl = -3.9999999999999997e (lower_neg)
+
+    a = 1.8
+    b = 1.4
+
+    xu = fsucc @@ 3.9999999999999997e-01
+                                (lower_neg is -4.0000000000000024e-01
+                                 upper_neg is -3.9999999999999997e-01)
+    xl = -4.0000000000000024e-01 (lower_neg)
+
+
+    ----------------
+    
+    a = 1.4
+    b = 1.4
+
+    xl is lower_neg
+    xu is upper_pos
+
+
+*)
+
+let al, au, bl, bu = 0.4, 1.8, 0.4, 1.8
+
+let pos_cp = 9.9792015476736e+291
+let neg_cp = -9.9792015476736e+291
+
+(* invariants: al, au (bl, bu) of the same sign, or same infinity
+   al <= au and bl <= bu if normalish *)
+let range2 al au bl bu =
+  (* determine xl *)
+  let xl =
+    if au >= bl then lower_neg au bl else lower_pos au bl in
+  let xu =
+    if al <= bu then upper_pos al bu else upper_neg al bu in
+  let xl =
+    if xl +. au < bl then
+      if xl <= 0. then fpred xl else fsucc xl
+    else
+      xl in
+  let xu =
+    if xu +. al > bu then
+      if xu >= 0. then fpred xu else fsucc xu
+    else
+      xu in
+  xl, xu
+
+let lower_bound a b =
+  if a < b then fsucc @@ lower_pos a b else lower_neg a b
+
+let upper_bound a b =
+  if a > b then fsucc @@ upper_neg a b else upper_pos a b
+
+let range_add al au bl bu =
+  assert(al <> infinity && al <> neg_infinity);
+  assert(au <> infinity && au <> neg_infinity);
+  if bl = infinity || bu = infinity ||
+     bl = neg_infinity || bu = neg_infinity then assert(bl = bu);
+  if 0. < au && au <= max_float then assert(0. < al && al <= au);
+  if 0. < bu && bu <= max_float then assert(0. < bl && bl <= bu);
+  if (-.max_float) <= al && al < 0. then assert(al <= au && au < 0.);
+  if (-.max_float) <= bl && bl < 0. then assert(bl <= bu && bu < 0.);
+  if bl = infinity then
+    if au < pos_cp then None else
+      let l = lower_pos au infinity in
+      let l = if l +. au < infinity then fsucc l else l in
+      Some (l, max_float) else
+  if bl = neg_infinity then
+    if al > neg_cp then None else
+      let u = upper_neg al neg_infinity in
+      let u = if u +. al > neg_infinity then fsucc u else u in
+      Some (-.max_float, u)
+  else
+    let l = lower_bound au bl
+    and u = upper_bound al bu in
+    if l > u then None else Some (l, u)
 
 let normalize = function
-  | Range (l, u) ->
-    if l = 0.0 then
-      if u = 0.0 then Some (l, u), None, None else
-      if u > 0.0 then Some (l, l), None, Some (smallest_pos, u) else
-      assert false else
-    if l > 0.0 then None, None, Some (l, u) else
-    if u = 0.0 then Some (u, u), Some (l, largest_neg), None else
+  | None -> None, None, None
+  | Some (l, u) ->
+    assert(l <= u);
+    if l = 0.0 && u = 0.0 then Some (-0.0, 0.0), None, None else
+    if l = 0.0 then Some (-0.0, 0.0), None, Some (smallest_pos, u) else
+    if u = 0.0 then Some (-0.0, 0.0), Some (l, largest_neg), None else
     if u < 0.0 then None, Some (l, u), None else
       Some (-0.0, 0.0), Some (l, largest_neg), Some (smallest_pos, u)
-  | Single n ->
-    if n = 0.0 then Some (n, n), None, None else
-    if n > 0.0 then None, None, Some (n, n)
-    else None, Some (n, n), None
-  | Empty -> None, None, None
-
-let combine t1 t2 =
-  match t1, t2 with
-  | Empty, r | r, Empty -> r
-  | Range (l1, u1), Range (l2, u2) ->
-    Range (min l1 l2, max u1 u2)
-  | Range (l, u) as r, Single n | Single n, (Range (l, u) as r) ->
-    if n < l then Range (n, u) else
-    if n > u then Range (l, n) else r
-  | Single n1, Single n2 ->
-    if n1 = n2 then t1 else
-    if n1 > n2 then Range (n2, n1) else Range (n1, n2)

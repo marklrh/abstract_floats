@@ -489,7 +489,7 @@ end
 
 module TestReverseAdd = struct
 
-  let debug = true
+  let debug = false
 
   let test x a b =
     if debug then begin
