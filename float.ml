@@ -1607,7 +1607,7 @@ let add_expanded a1 a2 =
   let header, neg_l, neg_u, pos_l, pos_u =
     normalize_for_add header (-. opp_neg_l) neg_u (-. opp_pos_l) pos_u
   in
-  inject header neg_l neg_u pos_l pos_u
+  inject header neg_l neg_u pos_l pos_u |> normalize
 
 (** [add a1 a2] returns the set of values that can be taken by adding a value
    from [a1] to a value from [a2]. *)
@@ -1663,7 +1663,7 @@ let mult_expanded a1 a2 =
   let header, neg_l, neg_u, pos_l, pos_u =
     normalize_for_mult header (-. opp_neg_l) neg_u (-. opp_pos_l) pos_u
   in
-  inject header neg_l neg_u pos_l pos_u
+  inject header neg_l neg_u pos_l pos_u |> normalize
 
 (** [mult a1 a2] returns the set of values that can be taken by multiplying
     a value from [a1] with a value from [a2]. *)
@@ -1716,7 +1716,7 @@ let div_expanded a1 a2 =
   let header, neg_l, neg_u, pos_l, pos_u =
     normalize_for_mult header (-. opp_neg_l) neg_u (-. opp_pos_l) pos_u
   in
-  inject header neg_l neg_u pos_l pos_u
+  inject header neg_l neg_u pos_l pos_u |> normalize
 
 (** [div a1 a2] returns the set of values that can be taken by dividing
     a value from [a1] by a value from [a2]. *)
