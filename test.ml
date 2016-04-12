@@ -768,7 +768,6 @@ module TestReverseMult = struct
 
 end
 
-
 let test_other () =
   let h = Header.(set_flag (of_flag negative_normalish) negative_zero) in
   let h = Header.(set_all_NaNs h) in
@@ -790,16 +789,14 @@ let test_meet = true
 let test_sqrt = true
 let test_arith = true
 let test_pretty = true
-let test_reverse = true
+let test_reverse_add = true
+let test_reverse_mult = true
 
-(*
 let () = TestArithmetic.regress_add1 ()
 let () = if test_join then TestJoins.(test_others (); test_rand ())
 let () = if test_meet then TestMeet.test_rand ()
 let () = if test_sqrt then TestSqrt.test_rand ()
 let () = if test_arith then TestArithmetic.test_rand ()
 let () = if test_pretty then TestPretty.test_rand ()
-let () = if test_reverse then TestReverseAdd.(test_norm_all (); test_rand ())
-*)
-
-let () = TestReverseMult.test_rand ()
+let () = if test_reverse_add then TestReverseAdd.(test_norm_all (); test_rand ())
+let () = if test_reverse_mult then TestReverseMult.test_rand ()
