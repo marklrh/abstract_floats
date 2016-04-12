@@ -722,6 +722,53 @@ module TestReverseAdd = struct
 
 end
 
+module TestReverseMult = struct
+
+  let debug = false
+
+  let test x a b =
+    if debug then begin
+      print_endline (String.make 15 '-');
+      Format.printf "a: %a\nb: %a\n" pretty a pretty b;
+      Format.printf "x:  %a\n" pretty x end;
+    let nx = reverse_mult x a b in
+    assert(Header.check nx);
+    if debug then Format.printf "x': %a\n" pretty nx;
+    if (not (is_included nx x)) then begin
+      dump_af x; dump_af nx; assert false
+    end;
+    match RandomAF.diff_selector x nx with
+    | None ->
+      if not (is_included nx x) then
+        (dump_internal x; dump_internal nx; assert false)
+      else ()
+    | Some f -> begin
+        for i = 0 to 1000 do
+          let fa, fb = RandomAF.(select a, select b) in
+          let nxf = f () in
+          if bits_eq (nxf *. fa) fb then begin
+          Format.printf "%s\n" (String.make 10 '~');
+          Format.printf "x : %a\nx': %a\na : %a\nb : %a\n\n"
+            pretty x pretty nx pretty a pretty b;
+          Format.printf "fx': %a\nfa : %a\nfb : %a\n\n"
+            ppf nxf ppf fa ppf fb;
+          assert false
+          end
+        done
+      end
+
+  let test_rand () =
+    print_endline "ReverseMult: start random tests";
+    for i = 0 to 100000 do
+      let a, b = RandomAF.pair () in
+      let x = RandomAF.abstract_float () in
+      test x a b
+    done;
+    print_endline "ReverseMult: random tests successful"
+
+end
+
+
 let test_other () =
   let h = Header.(set_flag (of_flag negative_normalish) negative_zero) in
   let h = Header.(set_all_NaNs h) in
@@ -745,6 +792,7 @@ let test_arith = true
 let test_pretty = true
 let test_reverse = true
 
+(*
 let () = TestArithmetic.regress_add1 ()
 let () = if test_join then TestJoins.(test_others (); test_rand ())
 let () = if test_meet then TestMeet.test_rand ()
@@ -752,3 +800,6 @@ let () = if test_sqrt then TestSqrt.test_rand ()
 let () = if test_arith then TestArithmetic.test_rand ()
 let () = if test_pretty then TestPretty.test_rand ()
 let () = if test_reverse then TestReverseAdd.(test_norm_all (); test_rand ())
+*)
+
+let () = TestReverseMult.test_rand ()
