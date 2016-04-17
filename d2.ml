@@ -189,6 +189,20 @@ let lower_pos_div x y = fsucc @@ dichotomy (fun f a b -> f /. a >= b) pos_zero x
 
 let upper_neg_div_2 x y = fsucc @@ dichotomy (fun f a b -> f /. a >= b) neg_zero x y
 
+(*
+let dump_div a b =
+  Printf.printf "lower_neg_div     : %.16e\n" (lower_neg_div a b);
+  Printf.printf "upper_neg_div     : %h\n" (upper_neg_div a b);
+  (* fixed *)
+  Printf.printf "lower_pos_div     : %h\n" (lower_pos_div a b);
+  Printf.printf "upper_pos_div     : %h\n" (upper_pos_div a b);
+  (* fixed *)
+  Printf.printf "lower_pos_div_2   : %h\n" (lower_pos_div_2 a b);
+  Printf.printf "upper_pos_div_2   : %h\n" (upper_pos_div_2 a b);
+  Printf.printf "lower_neg_div_2   : %h\n" (lower_neg_div_2 a b);
+  Printf.printf "upper_neg_div_2   : %h\n" (upper_neg_div_2 a b)
+*)
+
 let dump_div a b =
   Printf.printf "lower_neg_div     : %.16e\n" (lower_neg_div a b);
   Printf.printf "upper_neg_div     : %.16e\n" (upper_neg_div a b);
@@ -200,6 +214,7 @@ let dump_div a b =
   Printf.printf "upper_pos_div_2   : %.16e\n" (upper_pos_div_2 a b);
   Printf.printf "lower_neg_div_2   : %.16e\n" (lower_neg_div_2 a b);
   Printf.printf "upper_neg_div_2   : %.16e\n" (upper_neg_div_2 a b)
+
 
 (* [0.6, 1.8], [0.3, 1.6]
    al * bl ---> xl (* lower_pos *)
@@ -261,6 +276,31 @@ let dump_div a b =
 
 *)
 
+let fsucc' f = if is_pos f then fsucc f else fpred f
+let fpred' f = if is_pos f then fpred f else fsucc f
+
+let rec drift_right xl al au bl bu i =
+  if al > au then raise Not_found;
+  let b = xl /. al in
+  let err = if is_pos bl then b -. bl else bl -. b in
+  if err = 0. then i, xl else begin
+    if is_pos err && is_pos al || is_neg err && is_neg al then
+      drift_right xl (fsucc' al) au bl bu (i + 1)
+    else
+      drift_right (fsucc' xl) al au bl bu (i + 1)
+  end
+
+let rec drift_left xu al au bl bu i =
+  if al > au then raise Not_found;
+  let b = xu /. au in
+  let err = if is_pos bl then b -. bu else bu -. b in
+  if err = 0. then i, xu else begin
+    if is_pos err && is_neg al || is_neg err && is_pos al then
+      drift_left xu al (fpred' au) bl bu (i + 1)
+    else
+      drift_left (fpred' xu) al au bl bu (i + 1)
+  end
+
 let range_div al au bl bu =
   if bl = infinity || bl = neg_infinity then
     if al > 0. then
@@ -296,3 +336,56 @@ let range_div al au bl bu =
       else
         lower_pos_div_2 al bl, upper_pos_div_2 au bu in
     if xl > xu then None else Some (xl, xu)
+
+let range_div_2 al au bl bu =
+    let xl, xu =
+      if is_pos au && is_pos bu then
+        lower_pos_div al bl, upper_pos_div au bu else
+      if is_pos au && is_neg bu then
+        lower_neg_div al bl, upper_neg_div au bu else
+      if is_neg au && is_pos bu then
+        lower_neg_div_2 al bl, upper_neg_div_2 au bu
+      else
+        lower_pos_div_2 al bl, upper_pos_div_2 au bu in
+    try
+      let n1, xl = drift_right xl al au bl bu 0 in
+      let n2, xu = drift_left xu al au bl bu 0 in
+      if xl > xu then n1, n2, None else n1, n2, Some (xl, xu)
+    with _ -> 0, 0, None
+
+let () = Random.self_init ()
+
+let test () =
+  let random_pos_normalish () = Random.float 10. in
+(*
+    match Random.int 15 with
+    | 0 -> min_float
+    | 1 -> max_float
+    | 2 -> Random.float min_float
+    | 3 | 4 -> Random.float max_float
+    | 5 -> Random.float 2e-308
+    | 6 -> 2e-308
+    | _ -> Random.float 1_000_00. in
+*)
+  let au = random_pos_normalish () in
+  let al = if Random.int 5 = 0 then au else Random.float au in
+  if al = 0. then failwith ".";
+  let bu = random_pos_normalish () in
+  let bl = if Random.int 5 = 0 then bu else Random.float bu in
+  if bl = 0. then failwith ".";
+  let m, n, _ = range_div_2 al au bl bu in
+  if m > 10 || n > 10 then begin
+    Printf.printf "%d, %d\n" m n;
+    Printf.printf "%.16e\n" al;
+    Printf.printf "%.16e\n" au;
+    Printf.printf "%.16e\n" bl;
+    Printf.printf "%.16e\n" bu;
+    assert false
+  end
+
+let m, n, _ = range_div_2 0.3 0.6 1.8 1.8
+
+let () = Printf.printf "%d, %d\n" m n
+
+let rec loop () = test (); loop ()
+
