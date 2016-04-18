@@ -191,7 +191,7 @@ let upper_neg_div_2 x y = fsucc @@ dichotomy (fun f a b -> f /. a >= b) neg_zero
 
 (*
 let dump_div a b =
-  Printf.printf "lower_neg_div     : %.16e\n" (lower_neg_div a b);
+  Printf.printf "lower_neg_div     : %h\n" (lower_neg_div a b);
   Printf.printf "upper_neg_div     : %h\n" (upper_neg_div a b);
   (* fixed *)
   Printf.printf "lower_pos_div     : %h\n" (lower_pos_div a b);
@@ -203,7 +203,7 @@ let dump_div a b =
   Printf.printf "upper_neg_div_2   : %h\n" (upper_neg_div_2 a b)
 *)
 
-let dump_div a b =
+let dump_div_m1 a b =
   Printf.printf "lower_neg_div     : %.16e\n" (lower_neg_div a b);
   Printf.printf "upper_neg_div     : %.16e\n" (upper_neg_div a b);
   (* fixed *)
@@ -383,9 +383,72 @@ let test () =
     assert false
   end
 
-let m, n, _ = range_div_2 0.3 0.6 1.8 1.8
+let div2_cp = 4.4408920985006257e-16
+(* least value that can be divided and overflow to infinity *)
+let div2_cp2 = 8.8817841970012523e-16
 
-let () = Printf.printf "%d, %d\n" m n
+let upper_neg_div_m2 a b = fsucc @@ dichotomy (fun x a b -> a /. x <= b) neg_zero a b
 
-let rec loop () = test (); loop ()
+let lower_pos_div_m2_2 a b = fsucc @@ dichotomy (fun x a b -> a /. x <= b) pos_zero a b
 
+let lower_neg_div_m2 = dichotomy (fun x a b -> a /. x < b) neg_zero
+
+let upper_pos_div_m2_2 = dichotomy (fun x a b -> a /. x < b) pos_zero
+
+let upper_pos_div_m2 = dichotomy (fun x a b -> a /. x > b) pos_zero
+
+let lower_neg_div_m2_2 = dichotomy (fun x a b -> a /. x > b) neg_zero
+
+let lower_pos_div_m2 a b = fsucc @@ dichotomy (fun x a b -> a /. x >= b) pos_zero a b
+
+let upper_neg_div_m2_2 a b = fsucc @@ dichotomy (fun x a b -> a /. x >= b) neg_zero a b
+
+let dump_div_m2 a b =
+  Printf.printf "lower_neg_div_m2     : %.16e\n" (lower_neg_div_m2 a b);
+  Printf.printf "upper_neg_div_m2     : %.16e\n" (upper_neg_div_m2 a b);
+  (* fixed *)
+  Printf.printf "lower_pos_div_m2     : %.16e\n" (lower_pos_div_m2 a b);
+  Printf.printf "upper_pos_div_m2     : %.16e\n" (upper_pos_div_m2 a b);
+  (* fixed *)
+  Printf.printf "lower_pos_div_m2_2   : %.16e\n" (lower_pos_div_m2_2 a b);
+  Printf.printf "upper_pos_div_m2_2   : %.16e\n" (upper_pos_div_m2_2 a b);
+  Printf.printf "lower_neg_div_m2_2   : %.16e\n" (lower_neg_div_m2_2 a b);
+  Printf.printf "upper_neg_div_m2_2   : %.16e\n" (upper_neg_div_m2_2 a b)
+
+(* al / xl = inf
+   au / xu = inf *)
+let range_div_m2 al au bl bu =
+  if bl = 0. || bl = -0. then
+    if al > 0. then
+      if al > div2_cp then None else
+        let l, u = lower_pos_div_m2_2 al 0., max_float in
+        let l, u = if is_neg bl then (-.u, -.l) else l, u in
+        Some (l, u)
+    else
+    if au < (-.div2_cp) then None else
+      let l, u = (-.max_float), upper_neg_div_m2 au 0. in
+      let l, u = if is_neg bl then (-.u, -.l) else l, u in
+      Some (l, u)
+  else
+  if bl = infinity || bl = neg_infinity then
+    if au > 0. then
+      if au < div2_cp2 then None else
+        let l, u = smallest_pos, upper_pos_div_m2_2 au infinity in
+        let l, u = if is_neg bl then (-.u), (-.l) else l, u in
+        Some (l, u)
+    else
+    if al > -.div2_cp2 then None else
+      let l, u = lower_neg_div_m2 al infinity, largest_neg in
+      let l, u = if is_neg bl then (-.u), (-.l) else l, u in
+      Some (l, u)
+  else
+    let xl, xu =
+      if is_pos au && is_pos bu then
+        lower_pos_div_m2_2 al bl, upper_pos_div_m2_2 au bu else
+      if is_pos au && is_neg bu then
+        lower_neg_div_m2_2 al bl, upper_neg_div_m2_2 au bu else
+      if is_neg au && is_pos bu then
+        lower_neg_div_m2 al bl, upper_neg_div_m2 au bu
+      else
+        lower_pos_div_m2 al bl, upper_pos_div_m2 au bu in
+    if xl > xu then None else Some (xl, xu)
